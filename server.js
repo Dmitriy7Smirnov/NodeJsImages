@@ -1,43 +1,41 @@
 const express = require("express");
 const app = express();
-let router = express.Router();
+const router = express.Router();
 const FileType = require('file-type');
 const JP = require("jimp");
-let fs = require('fs');
+const fs = require('fs');
 const AWS = require("aws-sdk");
 const maxFileSize = 10123680;
-const maxBodySize = 5;
 const endpoint = "endpoint";
-const validExtentions = ["png", "bmp", "jpg"];
+const validExtensions = ["png", "bmp", "jpg"];
 
 
 router.get('', (req, res) => { console.log("file name is empty"); res.end("filename is empty") });
-router.get('/endpoint/:filename', requestHandle);
+router.get('/endpoint/:filename', handleRequest);
 
-function requestHandle(req, res) {
+function handleRequest(req, res) {
     console.log(req.originalUrl);
-    let fileName = req.originalUrl.substr(endpoint.length + 2);
+    let fileName = req.params.filename;
     console.log(fileName);
     let contentType = req.headers["content-type"];
     res.setHeader('Content-Type', 'text/plain');
-    let body = [];
     let bodySize = 0;
+    let chunk = "";
     let file = fs.createWriteStream(fileName);
-    req.on('data', (chunk) => {
-        body.push(chunk);
-        if (body.length > maxBodySize) {
-            body.forEach(function(v) { file.write(v); bodySize += v.byteLength; });
+    req
+        .on('data', (chunk) => {
+            file.write(chunk);
+            bodySize += chunk.byteLength;
             if (bodySize > maxFileSize) { res.end("File size exceeded 1"); res.destroy(); fs.unlinkSync(fileName) }
-            body.length = 0;
-        }
-    }).on('end', () => {
-        file.on('error', function(err) { /* error handling */ });
-        body.forEach(function(v) { file.write(v); bodySize += v.byteLength; });
-        if (bodySize > maxFileSize) { res.end("File size exceeded 2"); res.destroy(); fs.unlinkSync(fileName) }
-        file.end();
-        handleFile(fileName, res);
-        //res.end(bodySize.toFixed());
-    });
+        })
+        .on('end', () => {
+            file.on('error', function(err) { /* error handling */ });
+            file.write(chunk);
+            bodySize += chunk.byteLength;
+            if (bodySize > maxFileSize) { res.end("File size exceeded 2"); res.destroy(); fs.unlinkSync(fileName) }
+            file.end();
+            handleFile(fileName, res);
+        });
 
 }
 
@@ -50,26 +48,42 @@ console.log("Server is listening");
 const handleFile = (fileName, res) => {
     (async () => {
         let fileType = await FileType.fromFile(fileName);
-        if (fileType != undefined && fileType.mime != undefined && fileType.ext !=undefined) {
-            if (validExtentions.indexOf(fileType.ext) == -1) { console.log("Invalid file extension"); res.end("Invalid file extension"); }
+        if (fileType && fileType.mime && fileType.ext) {
+            if (validExtensions.indexOf(fileType.ext) === -1) { console.log("Invalid file extension"); res.end("Invalid file extension"); }
             if (fileType.mime.startsWith("image")) {
-    console.log("this is a image");
+                console.log("this is a image");
                 console.log(fileType.ext);
+                
+                //return /[^.]+$/.exec(filename);
+                //return (/[.]/.exec(filename)) ? /[^.]+$/.exec(filename) : undefined;
+                let newFileName = fileName;
+                let fileNameAsArray = fileName.split('.');
+                if (fileNameAsArray.length > 1) {
+                    const fileExtension = fileNameAsArray.pop();
+                    if (fileType.ext !== fileExtension) {
+                        newFileName = fileNameAsArray.join('') + '.' + fileType.ext;
+                    }
+                    console.log(fileExtension);
+                } else {
+                    newFileName = fileName + '.' + fileType.ext;
+                }
+
                 const image = await JP.read(fileName);
                 await image.quality(100);
                 let imageHeight = image.getHeight();
                 let imageWidth = image.getWidth();
                 if (imageHeight >= 2048 && imageWidth >= 2048) {
                     await image.resize(2048, 2048);
-                    await image.writeAsync("large_" + fileName);
+                    await image.writeAsync("large_" + newFileName);
                     await image.resize(1024, 1024);
-                    await image.writeAsync("medium_" + fileName);
+                    await image.writeAsync("medium_" + newFileName);
                 } else if (imageHeight >= 1024 && imageWidth >= 1024) {
                     await image.resize(1024, 1024);
-                    await image.writeAsync("medium_" + fileName);
+                    await image.writeAsync("medium_" + newFileName);
                 }
                 await image.resize(300, 300);
-                await image.writeAsync("small_" + fileName);
+                await image.writeAsync("small_" + newFileName);
+                uploadToAwsS3("small_" + newFileName);
                 fs.unlinkSync(fileName);
                 res.end("file was transformed");
             }
@@ -78,15 +92,32 @@ const handleFile = (fileName, res) => {
     })();
 };
 
+
 const uploadToAwsS3 = (fileName) => {
     // Set the region
-    AWS.config.update({region: 'REGION'});
+    //AWS.config.update({region: 'us-west-2'});
 
 // Create S3 service object
-    let s3 = new AWS.S3({apiVersion: '2006-03-01'});
+    let s3 = new AWS.S3({apiVersion: '2006-03-01', region: 'us-west-1'});
 
-    let myBucket = 'my.unique.bucket.name';
-    let myKey = 'myBucketKey';
+
+    /* The following example creates a bucket. */
+
+    let params = {
+        Bucket: "dmitriy7smirnov1"
+    };
+    // s3.createBucket(params, function(err, data) {
+    //     if (err) console.log(err, err.stack); // an error occurred
+    //     else     console.log(data);           // successful response
+    //     /*
+    //     data = {
+    //      Location: "/examplebucket"
+    //     }
+    //     */
+    // });
+
+    let myBucket = 'dmitriy7smirnov1'
+    let myKey = 'myTest';
 
 // call S3 to retrieve upload file to specified bucket
     let uploadParams = {Bucket: myBucket, Key: myKey, Body: ''};

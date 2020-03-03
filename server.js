@@ -10,8 +10,8 @@ const express = require("express"),
       validExtensions = ["png", "bmp", "jpg"];
 
 
-router.get('', (req, res) => { console.log("file name is empty"); res.end("filename is empty") });
-router.get('/:filename', handleRequest);
+router.post('', (req, res) => { console.log("file name is empty"); res.end("filename is empty") });
+router.post('/:filename', handleRequest);
 
 function handleRequest(req, res) {
     console.log(req.originalUrl);

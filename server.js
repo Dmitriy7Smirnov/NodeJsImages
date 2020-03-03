@@ -1,17 +1,17 @@
-const express = require("express");
-const app = express();
-const router = express.Router();
-const FileType = require('file-type');
-const JP = require("jimp");
-const fs = require('fs');
-const AWS = require("aws-sdk");
-const maxFileSize = 10123680;
-const endpoint = "endpoint";
-const validExtensions = ["png", "bmp", "jpg"];
+const express = require("express"),
+      app = express(),
+      router = express.Router(),
+      FileType = require('file-type'),
+      JP = require("jimp"),
+      fs = require('fs'),
+      AWS = require("aws-sdk"),
+      MAX_FILE_SIZE = 10123680,
+      endpoint = "endpoint",
+      validExtensions = ["png", "bmp", "jpg"];
 
 
 router.get('', (req, res) => { console.log("file name is empty"); res.end("filename is empty") });
-router.get('/endpoint/:filename', handleRequest);
+router.get('/:filename', handleRequest);
 
 function handleRequest(req, res) {
     console.log(req.originalUrl);
@@ -26,13 +26,13 @@ function handleRequest(req, res) {
         .on('data', (chunk) => {
             file.write(chunk);
             bodySize += chunk.byteLength;
-            if (bodySize > maxFileSize) { res.end("File size exceeded 1"); res.destroy(); fs.unlinkSync(fileName) }
+            if (bodySize > MAX_FILE_SIZE) { res.end("File size exceeded 1"); res.destroy(); fs.unlinkSync(fileName) }
         })
         .on('end', () => {
             file.on('error', function(err) { /* error handling */ });
             file.write(chunk);
             bodySize += chunk.byteLength;
-            if (bodySize > maxFileSize) { res.end("File size exceeded 2"); res.destroy(); fs.unlinkSync(fileName) }
+            if (bodySize > MAX_FILE_SIZE) { res.end("File size exceeded 2"); res.destroy(); fs.unlinkSync(fileName) }
             file.end();
             handleFile(fileName, res);
         });
@@ -41,7 +41,7 @@ function handleRequest(req, res) {
 
 app
     .use(router)
-    .listen(3031);
+    .listen(port = process.env.PORT || 80);
 
 console.log("Server is listening");
 
@@ -73,16 +73,19 @@ const handleFile = (fileName, res) => {
                 let imageHeight = image.getHeight();
                 let imageWidth = image.getWidth();
                 if (imageHeight >= 2048 && imageWidth >= 2048) {
-                    await image.resize(2048, 2048);
-                    await image.writeAsync("large_" + newFileName);
-                    await image.resize(1024, 1024);
-                    await image.writeAsync("medium_" + newFileName);
+                    image
+                        .resize(2048, 2048)
+                        .write("large_" + newFileName)
+                        .resize(1024, 1024)
+                        .write("medium_" + newFileName);
                 } else if (imageHeight >= 1024 && imageWidth >= 1024) {
-                    await image.resize(1024, 1024);
-                    await image.writeAsync("medium_" + newFileName);
+                    image
+                        .resize(1024, 1024)
+                        .write("medium_" + newFileName);
                 }
-                await image.resize(300, 300);
-                await image.writeAsync("small_" + newFileName);
+                    image
+                        .resize(300, 300)
+                        .write("small_" + newFileName);
                 uploadToAwsS3("small_" + newFileName);
                 fs.unlinkSync(fileName);
                 res.end("file was transformed");
